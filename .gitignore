@@ -1,0 +1,5 @@
+# Never commit real API keys
+providers.env
+*.env
+!.env.example
+!providers.env.example
