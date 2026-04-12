@@ -1,19 +1,21 @@
 # cc — Claude Code Multi-Provider Launcher
 
-A lightweight bash script that lets you switch between AI providers when using [Claude Code](https://claude.ai/code), with optional tmux session management.
+A bash script that lets you switch between AI providers when using [Claude Code](https://claude.ai/code), with optional tmux session management. Compatible with macOS bash 3.2+.
 
-## What it does
+## Features
 
-- **Multi-provider support** — switch between Anthropic, MiniMax, GLM, OpenRouter, DeepSeek, or any custom endpoint
-- **Tmux sessions** — name a session and it opens in tmux (reattaches if it already exists)
-- **Model overrides** — use any model a provider offers with `-m`
-- **Zero dependencies** — just bash and tmux (Claude Code must be installed)
+- **Interactive menus** — run `cc` with no args to pick provider + model
+- **Multi-provider support** — Anthropic, MiniMax, GLM, OpenRouter, Qwen, or any custom endpoint
+- **Tmux sessions** — name a session and it opens in tmux (reattaches if it exists)
+- **Model picker per provider** — choose from curated model lists, or override with `-m`
+- **Zero dependencies** — just bash 3.2+ and tmux (optional)
+- **macOS compatible** — no bash 4+ features required
 
 ## Quick start
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/YOUR_USERNAME/claude-tmux-switch.git
+git clone https://github.com/albertfj114/claude-tmux-switch.git
 cd claude-tmux-switch
 ./install.sh
 
@@ -23,16 +25,16 @@ cp providers.env.example ~/.config/cc/providers.env
 # Edit ~/.config/cc/providers.env with your actual keys
 
 # 3. Run
-cc                    # Anthropic (default)
-cc --glm              # GLM-5.1
+cc                    # Interactive provider + model picker
+cc --glm              # GLM model picker
 cc --minimax coding   # MiniMax in tmux session "coding"
 ```
 
 ## Requirements
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) installed and authenticated
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) installed
 - `tmux` (only needed for named sessions)
-- bash 3.2+
+- bash 3.2+ (macOS default works)
 
 ## Usage
 
@@ -42,26 +44,59 @@ cc [provider] [session-name] [-m model] [-p]
 
 | Flag | Description |
 |------|-------------|
-| `(default)` | Anthropic via your existing `ANTHROPIC_API_KEY` |
-| `--minimax` | MiniMax M2.7 |
-| `--glm` | GLM-5.1 via z.ai |
-| `--openrouter` | OpenRouter (access to 100+ models) |
-| `--deepseek` | DeepSeek (experimental — OpenAI format) |
-| `--custom` | Any Anthropic-compatible endpoint |
-| `-m MODEL` | Override the default model |
+| `(no args)` | Interactive provider + model picker |
+| `--glm` | GLM via z.ai (model picker) |
+| `--minimax` | MiniMax (model picker) |
+| `--openrouter` | OpenRouter — access 100+ models (model picker) |
+| `--qwen` | Qwen direct (experimental — OpenAI format) |
+| `--custom` | Custom endpoint (set CC_CUSTOM_* env vars) |
+| `-m MODEL` | Skip picker, use MODEL directly |
 | `-p` | Enable `--dangerously-skip-permissions` |
 | `session-name` | Open in a named tmux session |
 
 ### Examples
 
 ```bash
-cc                              # Anthropic, current terminal
-cc work                         # Anthropic in tmux session "work"
-cc --glm                        # GLM-5.1, current terminal
-cc --glm coding                 # GLM in tmux session "coding"
-cc --openrouter -m anthropic/claude-opus-4-20250514
-cc --minimax debug -p           # MiniMax, skip permission prompts, session "debug"
+cc                              # Interactive picker: choose provider, then model
+cc --glm                        # GLM model picker
+cc --glm coding                 # GLM + tmux session "coding"
+cc --glm -m glm-5.1 coding     # GLM 5.1 directly, tmux "coding"
+cc --openrouter -m deepseek/deepseek-v3.2
+cc --minimax debug -p           # MiniMax, skip permissions, session "debug"
 ```
+
+### Interactive menus
+
+When you run `cc` with no arguments, you get two menus:
+
+```
+  Pick a provider:
+
+    1) Anthropic                        [default]
+    2) GLM (z.ai)
+    3) MiniMax
+    4) OpenRouter
+    5) Qwen (experimental)
+    6) Custom endpoint
+
+  Enter choice [1]: 4
+
+  [OpenRouter] Pick a model:
+
+    1) Qwen 3.6 Plus                    [default]
+    2) DeepSeek V3.2
+    3) DeepSeek V3.2 Speciale
+    4) Kimi K2.5
+    5) Kimi K2 Thinking
+    6) DeepSeek R1 (reasoning)
+    7) Qwen 3 Max
+    8) Qwen 3 Coder Plus
+
+  Enter choice [1]: 4
+  Using: Kimi K2.5
+```
+
+Press Enter to accept the default, or type a number.
 
 ## How it works
 
@@ -73,33 +108,67 @@ Claude Code uses the Anthropic SDK internally. This script redirects requests to
 | `ANTHROPIC_AUTH_TOKEN` | API key for the provider |
 | `ANTHROPIC_MODEL` | Model to use |
 
-Providers that expose an Anthropic-compatible Messages API work natively. Providers using OpenAI format (like DeepSeek, Qwen) may not work — Claude Code expects the Anthropic protocol.
+Providers that expose an Anthropic-compatible Messages API work natively. Providers using OpenAI format (like Qwen direct) may not work — Claude Code expects the Anthropic protocol.
+
+## Configuration
+
+### Environment file
+
+Default locations (checked in order):
+1. `$CC_ENV_FILE` (if set)
+2. `~/.config/cc/providers.env`
+3. `~/Documents/Projects/.env`
+
+```bash
+# providers.env — only uncomment providers you have keys for
+# ANTHROPIC_API_KEY=sk-ant-...
+# MINIMAX_API_KEY=...
+# Z_GLM_API_KEY=...
+# OPENROUTER_API_KEY=...
+```
+
+### Install location
+
+`install.sh` symlinks `cc` to `~/.local/bin/cc` by default. Make sure `~/.local/bin` is in your `$PATH`.
 
 ## Adding a new provider
 
-Edit the `cc` script and add a new case to the provider switch block:
+Add a new entry to the `PROVIDERS` array and a matching case in the provider switch block:
 
 ```bash
-  yourprovider)
-    [[ -z "${YOURPROVIDER_API_KEY:-}" ]] && { echo "Error: YOURPROVIDER_API_KEY not set" >&2; exit 1; }
-    P_BASE_URL="https://api.yourprovider.com/anthropic"
-    P_AUTH_TOKEN="$YOURPROVIDER_API_KEY"
-    P_MODEL="${MODEL:-your-default-model}"
-    ;;
+# 1. Add to PROVIDERS array
+PROVIDERS=( ... "yourprovider|Your Provider Name" )
+
+# 2. Add a model array
+YOURPROVIDER_MODELS=(
+  "model-id|Display Name"
+)
+
+# 3. Add to the provider case block
+yourprovider)
+  [[ -z "${YOURPROVIDER_API_KEY:-}" ]] && { echo "Error: ..." >&2; exit 1; }
+  P_BASE_URL="https://api.yourprovider.com/anthropic"
+  P_AUTH_TOKEN="$YOURPROVIDER_API_KEY"
+  P_MODEL="$(pick_model YOURPROVIDER_MODELS "Your Provider")"
+  ;;
 ```
 
-Then add `YOURPROVIDER_API_KEY=your-key` to your `providers.env` file and a `--yourprovider` flag to the argument parser.
+Then add `YOURPROVIDER_API_KEY=your-key` to your `providers.env`.
 
-### Finding provider endpoints
+### Adding models to an existing provider
 
-Look for providers that offer an **Anthropic-compatible** or **Anthropic Messages API** endpoint. Common patterns:
-- `/anthropic` path (MiniMax, z.ai)
-- OpenRouter's `/api/anthropic` route
-- Self-hosted proxies like [LiteLLM](https://github.com/BerriAI/litellm) that translate between formats
+Just add a line to the model array — first entry is the default:
 
-## Custom provider
+```bash
+GLM_MODELS=(
+  "glm-5.1|GLM 5.1 (latest)"        # default
+  "glm-5.1-flash|GLM 5.1 Flash"     # new
+)
+```
 
-Use `--custom` with environment variables for any endpoint without modifying the script:
+## Custom provider (no code changes)
+
+Use `--custom` with environment variables for any endpoint:
 
 ```bash
 CC_CUSTOM_BASE_URL="https://your-proxy.example.com/anthropic" \
@@ -110,28 +179,10 @@ cc --custom
 
 Or set those in your `providers.env`.
 
-## Configuration
-
-### Environment file
-
-Default location: `~/.config/cc/providers.env` (override with `CC_ENV_FILE`):
-
-```bash
-# Only uncomment providers you have keys for
-ANTHROPIC_API_KEY=sk-ant-...
-# MINIMAX_API_KEY=...
-# Z_GLM_API_KEY=...
-# OPENROUTER_API_KEY=...
-```
-
-### Install location
-
-`install.sh` symlinks `cc` to `~/.local/bin/cc` by default. Make sure `~/.local/bin` is in your `$PATH`.
-
 ## Security notes
 
 - API keys are loaded from a local file — never committed to git
-- The `.gitignore` blocks `*.env` and `providers.env`
+- The `.gitignore` blocks all `.env` files
 - The `-p` flag (`--dangerously-skip-permissions`) disables Claude Code's tool confirmation prompts. Only use this if you understand the risks.
 
 ## License
