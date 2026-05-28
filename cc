@@ -51,6 +51,9 @@ while [[ $# -gt 0 ]]; do
     --glm)          PROVIDER="glm";          shift ;;
     --openrouter)   PROVIDER="openrouter";   shift ;;
     --qwen)         PROVIDER="qwen";         shift ;;
+    --kimi)         PROVIDER="kimi";         shift ;;
+    --ollama)       PROVIDER="ollama";       shift ;;
+    --deepseek)     PROVIDER="deepseek";     shift ;;
     --custom)       PROVIDER="custom";       shift ;;
     -m|--model)     MODEL="$2";              shift 2 ;;
     -p|--skip-permissions) SKIP_PERMISSIONS="1"; shift ;;
@@ -66,7 +69,10 @@ Providers:
   --minimax     MiniMax (model picker)
   --glm         GLM via z.ai (model picker)
   --openrouter  OpenRouter — access 100+ models (model picker)
-  --qwen        Qwen direct (experimental — OpenAI format)
+  --qwen        Qwen (Alibaba Cloud / DashScope, Anthropic-compatible)
+  --kimi        Kimi (Moonshot) direct
+  --ollama      Ollama local models (auto-detected; needs Anthropic proxy)
+  --deepseek    DeepSeek direct (model picker)
   --custom      Custom endpoint (set CC_CUSTOM_* env vars)
 
 Options:
@@ -97,37 +103,65 @@ done
 # First entry is the default when user presses Enter
 
 ANTHROPIC_MODELS=(
-  "claude-sonnet-4-20250514|Claude Sonnet 4 (default)"
-  "claude-opus-4-20250514|Claude Opus 4 (most capable)"
-  "claude-haiku-4-5-20251001|Claude Haiku 4.5 (fast)"
+  "claude-opus-4-7|Claude Opus 4.7        · reasoning · planning"
+  "claude-sonnet-4-6|Claude Sonnet 4.6    · coding · agentic · fast"
+  "claude-haiku-4-5-20251001|Claude Haiku 4.5  · fast · lightweight"
 )
 
 GLM_MODELS=(
-  "glm-5.1|GLM 5.1 (latest)"
-  "glm-5.1-flash|GLM 5.1 Flash (fast)"
-  "glm-5.1-turbo|GLM 5.1 Turbo"
-  "glm-4-plus|GLM 4 Plus"
-  "glm-4-flash|GLM 4 Flash (fast)"
+  "glm-5.1|GLM 5.1          · reasoning · planning"
+  "glm-5.1-turbo|GLM 5.1 Turbo  · coding · balanced"
+  "glm-5.1-flash|GLM 5.1 Flash  · fast · lightweight"
+  "glm-4-plus|GLM 4 Plus      · coding · general"
+  "glm-4-flash|GLM 4 Flash     · fast · cheap"
 )
 
 MINIMAX_MODELS=(
-  "MiniMax-M2.7-turbo|M2.7 Turbo (fast)"
-  "MiniMax-M2.7|M2.7 (latest)"
-  "MiniMax-M2.7-highspeed|M2.7 High Speed"
-  "MiniMax-M2.5|M2.5"
-  "MiniMax-M2.1|M2.1"
-  "MiniMax-M1|M1 (reasoning)"
+  "MiniMax-M2.7|M2.7          · coding · balanced"
+  "MiniMax-M2.7-turbo|M2.7 Turbo  · fast · coding"
+  "MiniMax-M2.7-highspeed|M2.7 High Speed · throughput"
+  "MiniMax-M1|M1              · reasoning · planning"
+  "MiniMax-M2.5|M2.5          · general"
+  "MiniMax-M2.1|M2.1          · legacy"
 )
 
 OPENROUTER_MODELS=(
-  "qwen/qwen3.6-plus|Qwen 3.6 Plus"
-  "deepseek/deepseek-v3.2|DeepSeek V3.2"
-  "deepseek/deepseek-v3.2-speciale|DeepSeek V3.2 Speciale"
-  "moonshotai/kimi-k2.5|Kimi K2.5"
-  "moonshotai/kimi-k2-thinking|Kimi K2 Thinking"
-  "deepseek/deepseek-r1-0528|DeepSeek R1 (reasoning)"
-  "qwen/qwen3-max|Qwen 3 Max"
-  "qwen/qwen3-coder-plus|Qwen 3 Coder Plus"
+  "qwen/qwen3.6-plus|Qwen 3.6 Plus         · coding · balanced"
+  "deepseek/deepseek-r1-0528|DeepSeek R1        · reasoning · planning"
+  "moonshotai/kimi-k2-thinking|Kimi K2 Thinking · reasoning · long-context"
+  "deepseek/deepseek-v3.2|DeepSeek V3.2     · coding · fast"
+  "qwen/qwen3-coder-plus|Qwen3 Coder Plus   · coding · specialized"
+  "moonshotai/kimi-k2.5|Kimi K2.5          · coding · long-context"
+  "deepseek/deepseek-v3.2-speciale|DeepSeek V3.2 Speciale · coding"
+  "qwen/qwen3-max|Qwen3 Max               · general · capable"
+)
+
+QWEN_MODELS=(
+  "qwen3.6-plus|Qwen 3.6 Plus      · coding · balanced"
+  "qwen3.7-max|Qwen 3.7 Max        · capable · general"
+  "qwen3-coder-plus|Qwen3 Coder Plus · coding · specialized"
+  "qwen3.6-flash|Qwen 3.6 Flash    · fast · cheap"
+)
+
+KIMI_MODELS=(
+  "kimi-for-coding|Kimi K2.6  · coding · long-context · 262K context"
+)
+
+DEEPSEEK_MODELS=(
+  "deepseek-r1|DeepSeek R1   · reasoning · planning"
+  "deepseek-v3|DeepSeek V3   · coding · fast · cheap"
+  "deepseek-v2.5|DeepSeek V2.5 · general · legacy"
+)
+
+# Fallback shown when Ollama is unreachable; actual list comes from /api/tags
+OLLAMA_FALLBACK_MODELS=(
+  "llama3.2:latest|Llama 3.2        · general · fast"
+  "deepseek-r1:latest|DeepSeek R1   · reasoning · planning"
+  "qwen3:latest|Qwen3               · reasoning · coding"
+  "qwen2.5-coder:latest|Qwen2.5 Coder · coding · specialized"
+  "glm4:latest|GLM4                 · coding · general"
+  "phi4:latest|Phi-4                · reasoning · compact"
+  "mistral:latest|Mistral           · general · fast"
 )
 
 # Provider menu for the interactive picker
@@ -136,9 +170,33 @@ PROVIDERS=(
   "glm|GLM (z.ai)"
   "minimax|MiniMax"
   "openrouter|OpenRouter"
-  "qwen|Qwen (experimental)"
+  "deepseek|DeepSeek"
+  "ollama|Ollama (local)"
+  "qwen|Qwen (Alibaba Cloud)"
+  "kimi|Kimi (Moonshot)"
   "custom|Custom endpoint"
 )
+
+# ─── Ollama model discovery ───────────────────────────────────────────────────
+
+fetch_ollama_models() {
+  local base="${OLLAMA_BASE_URL:-http://localhost:11434}"
+  local raw
+  raw="$(curl -sf --max-time 3 "$base/api/tags" 2>/dev/null)" || return 1
+  python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for m in data.get('models', []):
+        name = m['name']
+        size = m.get('size', 0)
+        size_gb = f'{size/1e9:.1f}GB' if size else ''
+        label = f'{name} ({size_gb})' if size_gb else name
+        print(name + '|' + label)
+except:
+    pass
+" <<< "$raw" 2>/dev/null
+}
 
 # ─── Interactive pickers ─────────────────────────────────────────────────────
 
@@ -236,6 +294,7 @@ P_AUTH_TOKEN=""
 P_MODEL=""
 P_TIMEOUT="300000"
 P_DISABLE_TRAFFIC=""
+P_DISABLE_TOOL_SEARCH=""
 
 case "$PROVIDER" in
   minimax)
@@ -261,13 +320,69 @@ case "$PROVIDER" in
     ;;
 
   qwen)
-    # QWEN-API-KEY has a dash so it can't be a bash var — read it directly from the file
-    QWEN_KEY="$(grep '^QWEN-API-KEY=' "$ENV_FILE" | cut -d= -f2-)"
-    [[ -z "$QWEN_KEY" ]] && { echo "Error: QWEN-API-KEY not set in $ENV_FILE" >&2; exit 1; }
-    echo "Warning: Qwen uses OpenAI format — may not work with Claude Code" >&2
-    P_BASE_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    # Prefer QWEN-API-KEY (standard DashScope/pay-as-you-go key) for the
+    # dashscope-intl endpoint. QWEN_API_KEY (sk-sp-* prefix) is a Token/Coding
+    # Plan key that needs a different endpoint; used only as a fallback here.
+    QWEN_KEY=""
+    [[ -n "$ENV_FILE" ]] && QWEN_KEY="$(grep '^QWEN-API-KEY=' "$ENV_FILE" | cut -d= -f2-)"
+    [[ -z "$QWEN_KEY" ]] && QWEN_KEY="${QWEN_API_KEY:-}"
+    [[ -z "$QWEN_KEY" ]] && { echo "Error: No Qwen key found. Set QWEN-API-KEY or QWEN_API_KEY in $ENV_FILE" >&2; exit 1; }
+    P_BASE_URL="https://dashscope-intl.aliyuncs.com/apps/anthropic"
     P_AUTH_TOKEN="$QWEN_KEY"
-    P_MODEL="${MODEL:-qwen-plus}"
+    P_MODEL="$(pick_model QWEN_MODELS "Qwen")"
+    ;;
+
+  kimi)
+    KIMI_KEY="$(grep '^KIMI-API-KEY=' "$ENV_FILE" | cut -d= -f2-)"
+    [[ -z "$KIMI_KEY" ]] && { echo "Error: KIMI-API-KEY not set in $ENV_FILE" >&2; exit 1; }
+    P_BASE_URL="https://api.kimi.com/coding/"
+    P_AUTH_TOKEN="$KIMI_KEY"
+    P_MODEL="$(pick_model KIMI_MODELS "Kimi")"
+    P_DISABLE_TOOL_SEARCH="1"
+    ;;
+
+  deepseek)
+    [[ -z "${DEEPSEEK_API_KEY:-}" ]] && { echo "Error: DEEPSEEK_API_KEY not set. Add it to $ENV_FILE" >&2; exit 1; }
+    P_BASE_URL="https://api.deepseek.com/anthropic"
+    P_AUTH_TOKEN="$DEEPSEEK_API_KEY"
+    P_MODEL="$(pick_model DEEPSEEK_MODELS "DeepSeek")"
+    ;;
+
+  ollama)
+    OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
+    OLLAMA_PROXY_URL="${OLLAMA_PROXY_URL:-}"
+
+    # Try to auto-detect locally pulled models
+    OLLAMA_MODELS=()
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && OLLAMA_MODELS+=("$line")
+    done < <(fetch_ollama_models 2>/dev/null)
+
+    if [[ ${#OLLAMA_MODELS[@]} -eq 0 ]]; then
+      echo "  Note: Could not reach Ollama at $OLLAMA_BASE_URL — showing preset list." >&2
+      OLLAMA_MODELS=("${OLLAMA_FALLBACK_MODELS[@]}")
+    fi
+
+    P_MODEL="$(pick_model OLLAMA_MODELS "Ollama")"
+
+    if [[ -z "$OLLAMA_PROXY_URL" ]]; then
+      cat >&2 <<'NOTE'
+
+  Ollama needs an Anthropic-compatible proxy to work with Claude Code.
+  Quickstart with litellm:
+
+    pip install litellm
+    litellm --model ollama/<model> --port 8082
+
+  Then add to your providers.env:
+    OLLAMA_PROXY_URL=http://localhost:8082
+
+NOTE
+      exit 1
+    fi
+
+    P_BASE_URL="$OLLAMA_PROXY_URL"
+    P_AUTH_TOKEN="ollama"
     ;;
 
   custom)
@@ -306,6 +421,7 @@ if [[ -n "$SESSION" ]]; then
     ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_OPUS_MODEL=$P_MODEL"
     ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_HAIKU_MODEL=$P_MODEL"
     [[ -n "$P_DISABLE_TRAFFIC" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
+    [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && ENV_PREFIX="$ENV_PREFIX ENABLE_TOOL_SEARCH=FALSE"
     FULL_CMD="$ENV_PREFIX $CMD"
   else
     FULL_CMD="$CMD"
@@ -332,6 +448,7 @@ else
     export ANTHROPIC_DEFAULT_OPUS_MODEL="$P_MODEL"
     export ANTHROPIC_DEFAULT_HAIKU_MODEL="$P_MODEL"
     [[ -n "$P_DISABLE_TRAFFIC" ]] && export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+    [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && export ENABLE_TOOL_SEARCH=FALSE
   fi
   exec $CMD
 fi

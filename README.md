@@ -5,7 +5,7 @@ A bash script that lets you switch between AI providers when using [Claude Code]
 ## Features
 
 - **Interactive menus** — run `cc` with no args to pick provider + model
-- **Multi-provider support** — Anthropic, MiniMax, GLM, OpenRouter, Qwen, or any custom endpoint
+- **Multi-provider support** — Anthropic, MiniMax, GLM, OpenRouter, Qwen, DeepSeek, Kimi, Ollama, or any custom endpoint
 - **Tmux sessions** — name a session and it opens in tmux (reattaches if it exists)
 - **Model picker per provider** — choose from curated model lists, or override with `-m`
 - **Zero dependencies** — just bash 3.2+ and tmux (optional)
@@ -45,11 +45,15 @@ cc [provider] [session-name] [-m model] [-p]
 | Flag | Description |
 |------|-------------|
 | `(no args)` | Interactive provider + model picker |
+| `--anthropic` | Anthropic (Claude models) |
 | `--glm` | GLM via z.ai (model picker) |
 | `--minimax` | MiniMax (model picker) |
 | `--openrouter` | OpenRouter — access 100+ models (model picker) |
-| `--qwen` | Qwen direct (experimental — OpenAI format) |
-| `--custom` | Custom endpoint (set CC_CUSTOM_* env vars) |
+| `--qwen` | Qwen / Alibaba Cloud DashScope (model picker) |
+| `--deepseek` | DeepSeek direct (model picker) |
+| `--kimi` | Kimi (Moonshot) direct |
+| `--ollama` | Ollama local models (auto-detected; needs Anthropic proxy) |
+| `--custom` | Custom endpoint (set `CC_CUSTOM_*` env vars) |
 | `-m MODEL` | Skip picker, use MODEL directly |
 | `-p` | Enable `--dangerously-skip-permissions` |
 | `session-name` | Open in a named tmux session |
@@ -63,6 +67,8 @@ cc --glm coding                 # GLM + tmux session "coding"
 cc --glm -m glm-5.1 coding     # GLM 5.1 directly, tmux "coding"
 cc --openrouter -m deepseek/deepseek-v3.2
 cc --minimax debug -p           # MiniMax, skip permissions, session "debug"
+cc --qwen                       # Qwen model picker
+cc --deepseek                   # DeepSeek model picker
 ```
 
 ### Interactive menus
@@ -76,31 +82,34 @@ When you run `cc` with no arguments, you get two menus:
     2) GLM (z.ai)
     3) MiniMax
     4) OpenRouter
-    5) Qwen (experimental)
-    6) Custom endpoint
+    5) DeepSeek
+    6) Ollama (local)
+    7) Qwen (Alibaba Cloud)
+    8) Kimi (Moonshot)
+    9) Custom endpoint
 
   Enter choice [1]: 4
 
   [OpenRouter] Pick a model:
 
     1) Qwen 3.6 Plus                    [default]
-    2) DeepSeek V3.2
-    3) DeepSeek V3.2 Speciale
-    4) Kimi K2.5
-    5) Kimi K2 Thinking
-    6) DeepSeek R1 (reasoning)
-    7) Qwen 3 Max
-    8) Qwen 3 Coder Plus
+    2) DeepSeek R1
+    3) Kimi K2 Thinking
+    4) DeepSeek V3.2
+    5) Qwen3 Coder Plus
+    6) Kimi K2.5
+    7) DeepSeek V3.2 Speciale
+    8) Qwen3 Max
 
-  Enter choice [1]: 4
-  Using: Kimi K2.5
+  Enter choice [1]: 3
+  Using: Kimi K2 Thinking
 ```
 
 Press Enter to accept the default, or type a number.
 
 ## How it works
 
-Claude Code uses the Anthropic SDK internally. This script redirects requests to other providers by setting environment variables:
+Claude Code uses the Anthropic SDK internally. This script redirects requests to other providers by setting environment variables before launching `claude`:
 
 | Variable | Purpose |
 |----------|---------|
@@ -108,7 +117,7 @@ Claude Code uses the Anthropic SDK internally. This script redirects requests to
 | `ANTHROPIC_AUTH_TOKEN` | API key for the provider |
 | `ANTHROPIC_MODEL` | Model to use |
 
-Providers that expose an Anthropic-compatible Messages API work natively. Providers using OpenAI format (like Qwen direct) may not work — Claude Code expects the Anthropic protocol.
+All supported providers expose an Anthropic-compatible Messages API, so Claude Code works with them natively without any shim or proxy (except Ollama, which needs a proxy like [litellm](https://github.com/BerriAI/litellm)).
 
 ## Configuration
 
@@ -125,6 +134,9 @@ Default locations (checked in order):
 # MINIMAX_API_KEY=...
 # Z_GLM_API_KEY=...
 # OPENROUTER_API_KEY=...
+# QWEN_API_KEY=...        # or QWEN-API-KEY= for DashScope pay-as-you-go
+# DEEPSEEK_API_KEY=...
+# KIMI-API-KEY=...
 ```
 
 ### Install location
