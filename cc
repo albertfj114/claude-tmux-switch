@@ -281,6 +281,28 @@ pick_model() {
   echo "$selected_id"
 }
 
+# ─── Tier map display ────────────────────────────────────────────────────────
+# Shows how /model inside the session maps to actual provider models.
+# Only printed when the provider has a real tier hierarchy (haiku ≠ opus).
+
+print_tier_map() {
+  [[ -z "$P_HAIKU_MODEL$P_SONNET_MODEL$P_OPUS_MODEL" ]] && return
+  local h="${P_HAIKU_MODEL:-$P_MODEL}"
+  local s="${P_SONNET_MODEL:-$P_MODEL}"
+  local o="${P_OPUS_MODEL:-$P_MODEL}"
+  [[ "$h" == "$s" && "$s" == "$o" ]] && return
+  local active="$P_MODEL"
+  local mh="" ms="" mo=""
+  [[ "$active" == "$h" ]] && mh="  ◀"
+  [[ "$active" == "$s" ]] && ms="  ◀"
+  [[ "$active" == "$o" ]] && mo="  ◀"
+  echo "     /model in-session maps to:" >&2
+  printf "       Haiku  →  %s%s\n" "$h" "$mh" >&2
+  printf "       Sonnet →  %s%s\n" "$s" "$ms" >&2
+  printf "       Opus   →  %s%s\n" "$o" "$mo" >&2
+  echo "" >&2
+}
+
 # ─── No provider flag? Show provider picker ──────────────────────────────────
 
 if [[ "$PROVIDER" == "anthropic" && -z "$MODEL" ]]; then
@@ -295,6 +317,9 @@ P_MODEL=""
 P_TIMEOUT="300000"
 P_DISABLE_TRAFFIC=""
 P_DISABLE_TOOL_SEARCH=""
+P_HAIKU_MODEL=""
+P_SONNET_MODEL=""
+P_OPUS_MODEL=""
 
 case "$PROVIDER" in
   minimax)
@@ -302,6 +327,9 @@ case "$PROVIDER" in
     P_BASE_URL="https://api.minimax.io/anthropic"
     P_AUTH_TOKEN="$MINIMAX_API_KEY"
     P_MODEL="$(pick_model MINIMAX_MODELS "MiniMax")"
+    P_HAIKU_MODEL="MiniMax-M2.7-turbo"
+    P_SONNET_MODEL="MiniMax-M2.7"
+    P_OPUS_MODEL="MiniMax-M1"
     P_DISABLE_TRAFFIC="1"
     ;;
 
@@ -310,6 +338,9 @@ case "$PROVIDER" in
     P_BASE_URL="https://api.z.ai/api/anthropic"
     P_AUTH_TOKEN="$Z_GLM_API_KEY"
     P_MODEL="$(pick_model GLM_MODELS "GLM")"
+    P_HAIKU_MODEL="glm-5.1-flash"
+    P_SONNET_MODEL="glm-5.1-turbo"
+    P_OPUS_MODEL="glm-5.1"
     ;;
 
   openrouter)
@@ -330,6 +361,9 @@ case "$PROVIDER" in
     P_BASE_URL="https://dashscope-intl.aliyuncs.com/apps/anthropic"
     P_AUTH_TOKEN="$QWEN_KEY"
     P_MODEL="$(pick_model QWEN_MODELS "Qwen")"
+    P_HAIKU_MODEL="qwen3.6-flash"
+    P_SONNET_MODEL="qwen3.6-plus"
+    P_OPUS_MODEL="qwen3.7-max"
     ;;
 
   kimi)
@@ -346,6 +380,9 @@ case "$PROVIDER" in
     P_BASE_URL="https://api.deepseek.com/anthropic"
     P_AUTH_TOKEN="$DEEPSEEK_API_KEY"
     P_MODEL="$(pick_model DEEPSEEK_MODELS "DeepSeek")"
+    P_HAIKU_MODEL="deepseek-v3"
+    P_SONNET_MODEL="deepseek-v3"
+    P_OPUS_MODEL="deepseek-r1"
     ;;
 
   ollama)
@@ -411,15 +448,18 @@ fi
 
 if [[ -n "$SESSION" ]]; then
   if [[ "$PROVIDER" != "anthropic" ]]; then
+    local_haiku="${P_HAIKU_MODEL:-$P_MODEL}"
+    local_sonnet="${P_SONNET_MODEL:-$P_MODEL}"
+    local_opus="${P_OPUS_MODEL:-$P_MODEL}"
     ENV_PREFIX="env ANTHROPIC_API_KEY="
     ENV_PREFIX="$ENV_PREFIX ANTHROPIC_BASE_URL=$P_BASE_URL"
     ENV_PREFIX="$ENV_PREFIX ANTHROPIC_AUTH_TOKEN=$P_AUTH_TOKEN"
     ENV_PREFIX="$ENV_PREFIX API_TIMEOUT_MS=$P_TIMEOUT"
     ENV_PREFIX="$ENV_PREFIX ANTHROPIC_MODEL=$P_MODEL"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_SMALL_FAST_MODEL=$P_MODEL"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_SONNET_MODEL=$P_MODEL"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_OPUS_MODEL=$P_MODEL"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_HAIKU_MODEL=$P_MODEL"
+    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_SMALL_FAST_MODEL=$local_haiku"
+    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_HAIKU_MODEL=$local_haiku"
+    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_SONNET_MODEL=$local_sonnet"
+    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_OPUS_MODEL=$local_opus"
     [[ -n "$P_DISABLE_TRAFFIC" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
     [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && ENV_PREFIX="$ENV_PREFIX ENABLE_TOOL_SEARCH=FALSE"
     FULL_CMD="$ENV_PREFIX $CMD"
@@ -432,21 +472,23 @@ if [[ -n "$SESSION" ]]; then
     exec tmux attach-session -t "$SESSION"
   else
     echo "[cc] Starting [$PROVIDER] session: $SESSION in $(pwd)"
+    print_tier_map
     exec tmux new-session -s "$SESSION" -c "$PWD" "$FULL_CMD"
   fi
 
 else
   echo "[cc] Provider: $PROVIDER${P_MODEL:+ ($P_MODEL)}"
+  print_tier_map
   if [[ "$PROVIDER" != "anthropic" ]]; then
     unset ANTHROPIC_API_KEY
     export ANTHROPIC_BASE_URL="$P_BASE_URL"
     export ANTHROPIC_AUTH_TOKEN="$P_AUTH_TOKEN"
     export API_TIMEOUT_MS="$P_TIMEOUT"
     export ANTHROPIC_MODEL="$P_MODEL"
-    export ANTHROPIC_SMALL_FAST_MODEL="$P_MODEL"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="$P_MODEL"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="$P_MODEL"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="$P_MODEL"
+    export ANTHROPIC_SMALL_FAST_MODEL="${P_HAIKU_MODEL:-$P_MODEL}"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="${P_HAIKU_MODEL:-$P_MODEL}"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="${P_SONNET_MODEL:-$P_MODEL}"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="${P_OPUS_MODEL:-$P_MODEL}"
     [[ -n "$P_DISABLE_TRAFFIC" ]] && export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
     [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && export ENABLE_TOOL_SEARCH=FALSE
   fi
