@@ -8,6 +8,7 @@ A bash script that lets you switch between AI providers when using [Claude Code]
 - **Multi-provider support** — Anthropic, MiniMax, GLM, OpenRouter, Qwen, DeepSeek, Kimi, Ollama, or any custom endpoint
 - **Tmux sessions** — name a session and it opens in tmux (reattaches if it exists)
 - **Model picker per provider** — choose from curated model lists, or override with `-m`
+- **In-session model switching** — `/model` inside Claude Code maps to real provider tiers (Haiku/Sonnet/Opus → fast/balanced/powerful)
 - **Zero dependencies** — just bash 3.2+ and tmux (optional)
 - **macOS compatible** — no bash 4+ features required
 
@@ -107,6 +108,31 @@ When you run `cc` with no arguments, you get two menus:
 
 Press Enter to accept the default, or type a number.
 
+### In-session model switching
+
+At launch, `cc` prints a tier map showing what `/model` will select inside the session:
+
+```
+[cc] Provider: qwen (qwen3.6-plus)
+     /model in-session maps to:
+       Haiku  →  qwen3.6-flash
+       Sonnet →  qwen3.6-plus  ◀
+       Opus   →  qwen3.7-max
+```
+
+The `◀` marks your currently active model. Inside the session, use `/model` and pick Haiku, Sonnet, or Opus to switch between the provider's actual models — Claude Code routes each tier through the corresponding `ANTHROPIC_DEFAULT_*_MODEL` env var that `cc` set at startup.
+
+Tier mappings by provider:
+
+| Provider | Haiku (fast) | Sonnet (balanced) | Opus (powerful) |
+|----------|-------------|-------------------|-----------------|
+| Qwen | qwen3.6-flash | qwen3.6-plus | qwen3.7-max |
+| GLM | glm-5.1-flash | glm-5.1-turbo | glm-5.1 |
+| MiniMax | M2.7 Turbo | M2.7 | M1 |
+| DeepSeek | deepseek-v3 | deepseek-v3 | deepseek-r1 |
+
+Providers not in this table (OpenRouter, Kimi, Ollama, custom) use the single selected model for all tiers.
+
 ## How it works
 
 Claude Code uses the Anthropic SDK internally. This script redirects requests to other providers by setting environment variables before launching `claude`:
@@ -115,7 +141,10 @@ Claude Code uses the Anthropic SDK internally. This script redirects requests to
 |----------|---------|
 | `ANTHROPIC_BASE_URL` | API endpoint URL |
 | `ANTHROPIC_AUTH_TOKEN` | API key for the provider |
-| `ANTHROPIC_MODEL` | Model to use |
+| `ANTHROPIC_MODEL` | Primary model (set at launch) |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Model used when `/model` → Haiku |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Model used when `/model` → Sonnet |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Model used when `/model` → Opus |
 
 All supported providers expose an Anthropic-compatible Messages API, so Claude Code works with them natively without any shim or proxy (except Ollama, which needs a proxy like [litellm](https://github.com/BerriAI/litellm)).
 
