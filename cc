@@ -148,9 +148,8 @@ KIMI_MODELS=(
 )
 
 DEEPSEEK_MODELS=(
-  "deepseek-r1|DeepSeek R1   · reasoning · planning"
-  "deepseek-v3|DeepSeek V3   · coding · fast · cheap"
-  "deepseek-v2.5|DeepSeek V2.5 · general · legacy"
+  "deepseek-v4-pro|DeepSeek V4 Pro    · reasoning · coding · flagship"
+  "deepseek-v4-flash|DeepSeek V4 Flash · fast · cheap"
 )
 
 # Fallback shown when Ollama is unreachable; actual list comes from /api/tags
@@ -320,6 +319,10 @@ P_DISABLE_TOOL_SEARCH=""
 P_HAIKU_MODEL=""
 P_SONNET_MODEL=""
 P_OPUS_MODEL=""
+P_EFFORT_LEVEL=""
+P_SUBAGENT_MODEL=""
+P_NEEDS_PROXY=""
+P_THINKING_BUDGET=""
 
 case "$PROVIDER" in
   minimax)
@@ -364,6 +367,7 @@ case "$PROVIDER" in
     P_HAIKU_MODEL="qwen3.6-flash"
     P_SONNET_MODEL="qwen3.6-plus"
     P_OPUS_MODEL="qwen3.7-max"
+    P_NEEDS_PROXY="1"
     ;;
 
   kimi)
@@ -380,9 +384,13 @@ case "$PROVIDER" in
     P_BASE_URL="https://api.deepseek.com/anthropic"
     P_AUTH_TOKEN="$DEEPSEEK_API_KEY"
     P_MODEL="$(pick_model DEEPSEEK_MODELS "DeepSeek")"
-    P_HAIKU_MODEL="deepseek-v3"
-    P_SONNET_MODEL="deepseek-v3"
-    P_OPUS_MODEL="deepseek-r1"
+    P_HAIKU_MODEL="deepseek-v4-flash"
+    P_SONNET_MODEL="deepseek-v4-pro"
+    P_OPUS_MODEL="deepseek-v4-pro"
+    P_EFFORT_LEVEL="max"
+    P_SUBAGENT_MODEL="deepseek-v4-flash"
+    P_NEEDS_PROXY="1"
+    P_THINKING_BUDGET="16000"
     ;;
 
   ollama)
@@ -436,6 +444,95 @@ NOTE
     ;;
 esac
 
+# ─── Start system-message proxy if needed ────────────────────────────────────
+# Providers that don't support the mid-conversation-system beta reject requests
+# containing role:system messages injected by Claude Code hooks. This proxy
+# strips those messages before forwarding to the real provider endpoint.
+
+PROXY_SCRIPT=""
+PROXY_REAL_URL=""
+PROXY_PORT=""
+
+if [[ -n "$P_NEEDS_PROXY" && "$PROVIDER" != "anthropic" ]]; then
+  PROXY_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); p=s.getsockname()[1]; s.close(); print(p)")
+  PROXY_SCRIPT=$(mktemp /tmp/cc-proxy-XXXXXX)
+  PROXY_REAL_URL="$P_BASE_URL"
+  P_BASE_URL="http://127.0.0.1:$PROXY_PORT"
+
+  cat > "$PROXY_SCRIPT" << 'PROXY_EOF'
+import http.server, json, urllib.request, urllib.error, sys, ssl, os
+
+TARGET, TOKEN, PORT = sys.argv[1], sys.argv[2], int(sys.argv[3])
+THINKING_BUDGET = int(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else 0
+
+def make_ssl_ctx():
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        cafile = '/etc/ssl/cert.pem'
+        if os.path.exists(cafile):
+            ctx = ssl.create_default_context(cafile=cafile)
+    return ctx
+
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        n = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(n)
+        try:
+            d = json.loads(body)
+            if 'messages' in d:
+                d['messages'] = [m for m in d['messages'] if m.get('role') != 'system']
+            if THINKING_BUDGET and 'thinking' in d:
+                d['thinking'] = {'type': 'enabled', 'budget_tokens': THINKING_BUDGET}
+            body = json.dumps(d).encode()
+        except Exception:
+            pass
+        url = TARGET.rstrip('/') + self.path
+        req = urllib.request.Request(url, data=body, method='POST')
+        for k, v in self.headers.items():
+            kl = k.lower()
+            if kl in ('host', 'content-length', 'x-api-key', 'authorization', 'anthropic-auth-token'):
+                continue
+            if kl == 'anthropic-beta':
+                v = ','.join(b.strip() for b in v.split(',')
+                             if b.strip() != 'mid-conversation-system-2026-04-07')
+                if not v:
+                    continue
+            req.add_header(k, v)
+        req.add_header('Authorization', 'Bearer ' + TOKEN)
+        req.add_header('x-api-key', TOKEN)
+        req.add_header('Content-Length', str(len(body)))
+        try:
+            with urllib.request.urlopen(req, context=make_ssl_ctx(), timeout=600) as r:
+                self.send_response(r.status)
+                for k, v in r.headers.items():
+                    if k.lower() in ('transfer-encoding', 'content-encoding'):
+                        continue
+                    self.send_header(k, v)
+                self.end_headers()
+                while True:
+                    chunk = r.read(4096)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+        except urllib.error.HTTPError as e:
+            b = e.read()
+            self.send_response(e.code)
+            self.end_headers()
+            self.wfile.write(b)
+        except Exception as e:
+            self.send_response(502)
+            self.end_headers()
+            self.wfile.write(str(e).encode())
+    def log_message(self, *a): pass
+
+http.server.HTTPServer(('127.0.0.1', PORT), H).serve_forever()
+PROXY_EOF
+fi
+
 # ─── Build the claude command ────────────────────────────────────────────────
 
 CMD="claude"
@@ -462,6 +559,8 @@ if [[ -n "$SESSION" ]]; then
     ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_OPUS_MODEL=$local_opus"
     [[ -n "$P_DISABLE_TRAFFIC" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
     [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && ENV_PREFIX="$ENV_PREFIX ENABLE_TOOL_SEARCH=FALSE"
+    [[ -n "$P_EFFORT_LEVEL" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_EFFORT_LEVEL=$P_EFFORT_LEVEL"
+    [[ -n "$P_SUBAGENT_MODEL" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_SUBAGENT_MODEL=$P_SUBAGENT_MODEL"
     FULL_CMD="$ENV_PREFIX $CMD"
   else
     FULL_CMD="$CMD"
@@ -473,7 +572,20 @@ if [[ -n "$SESSION" ]]; then
   else
     echo "[cc] Starting [$PROVIDER] session: $SESSION in $(pwd)"
     print_tier_map
-    exec tmux new-session -s "$SESSION" -c "$PWD" "$FULL_CMD"
+    if [[ -n "$PROXY_SCRIPT" ]]; then
+      LAUNCH=$(mktemp /tmp/cc-launch-XXXXXX)
+      {
+        echo '#!/bin/bash'
+        echo "python3 '$PROXY_SCRIPT' '$PROXY_REAL_URL' '$P_AUTH_TOKEN' $PROXY_PORT $P_THINKING_BUDGET &"
+        echo '_P=$!'
+        echo "trap 'kill \$_P 2>/dev/null; rm -f $PROXY_SCRIPT $LAUNCH' EXIT INT TERM"
+        echo 'sleep 0.3'
+        echo "$FULL_CMD"
+      } > "$LAUNCH"
+      exec tmux new-session -s "$SESSION" -c "$PWD" "bash '$LAUNCH'"
+    else
+      exec tmux new-session -s "$SESSION" -c "$PWD" "$FULL_CMD"
+    fi
   fi
 
 else
@@ -491,6 +603,17 @@ else
     export ANTHROPIC_DEFAULT_OPUS_MODEL="${P_OPUS_MODEL:-$P_MODEL}"
     [[ -n "$P_DISABLE_TRAFFIC" ]] && export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
     [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && export ENABLE_TOOL_SEARCH=FALSE
+    [[ -n "$P_EFFORT_LEVEL" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$P_EFFORT_LEVEL"
+    [[ -n "$P_SUBAGENT_MODEL" ]] && export CLAUDE_CODE_SUBAGENT_MODEL="$P_SUBAGENT_MODEL"
   fi
-  exec $CMD
+  if [[ -n "$PROXY_SCRIPT" ]]; then
+    python3 "$PROXY_SCRIPT" "$PROXY_REAL_URL" "$P_AUTH_TOKEN" "$PROXY_PORT" "$P_THINKING_BUDGET" &
+    _PROXY_PID=$!
+    sleep 0.3
+    $CMD
+    kill $_PROXY_PID 2>/dev/null
+    rm -f "$PROXY_SCRIPT"
+  else
+    exec $CMD
+  fi
 fi
