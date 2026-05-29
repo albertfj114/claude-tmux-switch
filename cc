@@ -354,20 +354,20 @@ case "$PROVIDER" in
     ;;
 
   qwen)
-    # Prefer QWEN-API-KEY (standard DashScope/pay-as-you-go key) for the
-    # dashscope-intl endpoint. QWEN_API_KEY (sk-sp-* prefix) is a Token/Coding
-    # Plan key that needs a different endpoint; used only as a fallback here.
+    # Prefer QWEN_API_KEY (sk-sp-* prefix, Token/Coding Plan) with the
+    # token-plan endpoint. Fall back to QWEN-API-KEY (pay-as-you-go) if
+    # the coding plan key is not set.
     QWEN_KEY=""
-    [[ -n "$ENV_FILE" ]] && QWEN_KEY="$(grep '^QWEN-API-KEY=' "$ENV_FILE" | cut -d= -f2-)"
+    [[ -n "$ENV_FILE" ]] && QWEN_KEY="$(grep '^QWEN_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
     [[ -z "$QWEN_KEY" ]] && QWEN_KEY="${QWEN_API_KEY:-}"
-    [[ -z "$QWEN_KEY" ]] && { echo "Error: No Qwen key found. Set QWEN-API-KEY or QWEN_API_KEY in $ENV_FILE" >&2; exit 1; }
-    P_BASE_URL="https://dashscope-intl.aliyuncs.com/apps/anthropic"
+    [[ -z "$QWEN_KEY" ]] && QWEN_KEY="$(grep '^QWEN-API-KEY=' "$ENV_FILE" | cut -d= -f2-)"
+    [[ -z "$QWEN_KEY" ]] && { echo "Error: No Qwen key found. Set QWEN_API_KEY or QWEN-API-KEY in $ENV_FILE" >&2; exit 1; }
+    P_BASE_URL="https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic"
     P_AUTH_TOKEN="$QWEN_KEY"
     P_MODEL="$(pick_model QWEN_MODELS "Qwen")"
     P_HAIKU_MODEL="qwen3.6-flash"
     P_SONNET_MODEL="qwen3.6-plus"
     P_OPUS_MODEL="qwen3.7-max"
-    P_NEEDS_PROXY="1"
     ;;
 
   kimi)
