@@ -50,7 +50,7 @@ cc [provider] [session-name] [-m model] [-p]
 | `--glm` | GLM via z.ai (model picker) |
 | `--minimax` | MiniMax (model picker) |
 | `--openrouter` | OpenRouter — access 100+ models (model picker) |
-| `--qwen` | Qwen / Alibaba Cloud DashScope (model picker) |
+| `--qwen` | Qwen — Coding Plan (Token Plan) / DashScope fallback (model picker) |
 | `--deepseek` | DeepSeek direct (model picker) |
 | `--kimi` | Kimi (Moonshot) direct |
 | `--ollama` | Ollama local models (auto-detected; needs Anthropic proxy) |
@@ -163,7 +163,7 @@ Default locations (checked in order):
 # MINIMAX_API_KEY=...
 # Z_GLM_API_KEY=...
 # OPENROUTER_API_KEY=...
-# QWEN_API_KEY=...        # or QWEN-API-KEY= for DashScope pay-as-you-go
+# QWEN_API_KEY=...        # sk-sp-* Token/Coding Plan (default) — or QWEN-API-KEY= for pay-as-you-go fallback
 # DEEPSEEK_API_KEY=...
 # KIMI-API-KEY=...
 ```
