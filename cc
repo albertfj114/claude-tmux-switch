@@ -344,7 +344,7 @@ case "$PROVIDER" in
     P_MODEL="$(pick_model GLM_MODELS "GLM")"
     P_HAIKU_MODEL="glm-4.7-flash"
     P_SONNET_MODEL="glm-5-turbo"
-    P_OPUS_MODEL="glm-5.2[1m]"
+    P_OPUS_MODEL="glm-5.2"
     ;;
 
   openrouter)

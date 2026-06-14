@@ -127,7 +127,7 @@ Tier mappings by provider:
 | Provider | Haiku (fast) | Sonnet (balanced) | Opus (powerful) |
 |----------|-------------|-------------------|-----------------|
 | Qwen | qwen3.6-flash | qwen3.6-plus | qwen3.7-max |
-| GLM | glm-4.7-flash | glm-5-turbo | glm-5.2[1m] |
+| GLM | glm-4.7-flash | glm-5-turbo | glm-5.2 |
 | MiniMax | M2.7 Turbo | M2.7 | M1 |
 | DeepSeek | deepseek-v3 | deepseek-v3 | deepseek-r1 |
 
