@@ -10,7 +10,7 @@ set -euo pipefail
 #   cc                              # Pick provider + model from menus
 #   cc --glm                        # GLM, pick model from menu
 #   cc --glm mod2                   # GLM, pick model, tmux session "mod2"
-#   cc --glm -m glm-5.1             # GLM, skip menu, use glm-5.1 directly
+#   cc --glm -m glm-5.2             # GLM, skip menu, use glm-5.2 directly
 #   cc --minimax work               # MiniMax, pick model, tmux session "work"
 #   cc --openrouter                 # OpenRouter, pick model from menu
 #   cc -p --glm coding              # Skip permissions, GLM, tmux "coding"
@@ -103,17 +103,18 @@ done
 # First entry is the default when user presses Enter
 
 ANTHROPIC_MODELS=(
-  "claude-opus-4-7|Claude Opus 4.7        · reasoning · planning"
-  "claude-sonnet-4-6|Claude Sonnet 4.6    · coding · agentic · fast"
-  "claude-haiku-4-5-20251001|Claude Haiku 4.5  · fast · lightweight"
+  "claude-opus-4-8|Claude Opus 4.8    · reasoning · planning"
+  "claude-fable-5|Claude Fable 5     · most capable · long-horizon"
+  "claude-sonnet-4-6|Claude Sonnet 4.6 · coding · agentic · fast"
+  "claude-haiku-4-5|Claude Haiku 4.5  · fast · lightweight"
 )
 
 GLM_MODELS=(
-  "glm-5.1|GLM 5.1          · reasoning · planning"
-  "glm-5.1-turbo|GLM 5.1 Turbo  · coding · balanced"
-  "glm-5.1-flash|GLM 5.1 Flash  · fast · lightweight"
-  "glm-4-plus|GLM 4 Plus      · coding · general"
-  "glm-4-flash|GLM 4 Flash     · fast · cheap"
+  "glm-5.2|GLM 5.2         · flagship · reasoning · 1M ctx"
+  "glm-5.1|GLM 5.1         · reasoning · long-horizon"
+  "glm-5-turbo|GLM 5 Turbo     · coding · balanced"
+  "glm-4.7|GLM 4.7         · coding · value"
+  "glm-4.7-flash|GLM 4.7 Flash  · fast · free"
 )
 
 MINIMAX_MODELS=(
@@ -144,7 +145,7 @@ QWEN_MODELS=(
 )
 
 KIMI_MODELS=(
-  "kimi-for-coding|Kimi K2.6  · coding · long-context · 262K context"
+  "kimi-for-coding|Kimi K2.7 Code · coding · long-context · 256K context"
 )
 
 DEEPSEEK_MODELS=(
@@ -341,9 +342,9 @@ case "$PROVIDER" in
     P_BASE_URL="https://api.z.ai/api/anthropic"
     P_AUTH_TOKEN="$Z_GLM_API_KEY"
     P_MODEL="$(pick_model GLM_MODELS "GLM")"
-    P_HAIKU_MODEL="glm-5.1-flash"
-    P_SONNET_MODEL="glm-5.1-turbo"
-    P_OPUS_MODEL="glm-5.1"
+    P_HAIKU_MODEL="glm-4.7-flash"
+    P_SONNET_MODEL="glm-5-turbo"
+    P_OPUS_MODEL="glm-5.2[1m]"
     ;;
 
   openrouter)

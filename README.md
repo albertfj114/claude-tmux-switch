@@ -127,7 +127,7 @@ Tier mappings by provider:
 | Provider | Haiku (fast) | Sonnet (balanced) | Opus (powerful) |
 |----------|-------------|-------------------|-----------------|
 | Qwen | qwen3.6-flash | qwen3.6-plus | qwen3.7-max |
-| GLM | glm-5.1-flash | glm-5.1-turbo | glm-5.1 |
+| GLM | glm-4.7-flash | glm-5-turbo | glm-5.2[1m] |
 | MiniMax | M2.7 Turbo | M2.7 | M1 |
 | DeepSeek | deepseek-v3 | deepseek-v3 | deepseek-r1 |
 
@@ -202,8 +202,8 @@ Just add a line to the model array — first entry is the default:
 
 ```bash
 GLM_MODELS=(
-  "glm-5.1|GLM 5.1 (latest)"        # default
-  "glm-5.1-flash|GLM 5.1 Flash"     # new
+  "glm-5.2|GLM 5.2 (latest)"        # default
+  "glm-4.7-flash|GLM 4.7 Flash"     # new
 )
 ```
 
