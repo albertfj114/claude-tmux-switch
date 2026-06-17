@@ -3,3 +3,6 @@ providers.env
 *.env
 !.env.example
 !providers.env.example
+
+# Playwright MCP recordings
+.playwright-mcp/

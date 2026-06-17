@@ -9,7 +9,9 @@ A bash script that lets you switch between AI providers when using [Claude Code]
 - **Tmux sessions** — name a session and it opens in tmux (reattaches if it exists)
 - **Model picker per provider** — choose from curated model lists, or override with `-m`
 - **In-session model switching** — `/model` inside Claude Code maps to real provider tiers (Haiku/Sonnet/Opus → fast/balanced/powerful)
-- **Zero dependencies** — just bash 3.2+ and tmux (optional)
+- **System-message proxy** — auto-starts a local proxy for providers that don't support `role:system` messages (DeepSeek), strips them transparently
+- **Thinking budget** — sets extended thinking for reasoning models (DeepSeek V4 Pro: 16K tokens)
+- **Zero dependencies** — just bash 3.2+, Python 3, and tmux (optional)
 - **macOS compatible** — no bash 4+ features required
 
 ## Quick start
@@ -35,6 +37,7 @@ cc --minimax coding   # MiniMax in tmux session "coding"
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) installed
 - `tmux` (only needed for named sessions)
+- Python 3 (for the system-message proxy, used by DeepSeek)
 - bash 3.2+ (macOS default works)
 
 ## Usage
@@ -129,7 +132,7 @@ Tier mappings by provider:
 | Qwen | qwen3.6-flash | qwen3.6-plus | qwen3.7-max |
 | GLM | glm-4.7-flash | glm-5-turbo | glm-5.2 |
 | MiniMax | M2.7 Turbo | M2.7 | M1 |
-| DeepSeek | deepseek-v3 | deepseek-v3 | deepseek-r1 |
+| DeepSeek | deepseek-v4-flash | deepseek-v4-pro | deepseek-v4-pro |
 
 Providers not in this table (OpenRouter, Kimi, Ollama, custom) use the single selected model for all tiers.
 
@@ -142,11 +145,26 @@ Claude Code uses the Anthropic SDK internally. This script redirects requests to
 | `ANTHROPIC_BASE_URL` | API endpoint URL |
 | `ANTHROPIC_AUTH_TOKEN` | API key for the provider |
 | `ANTHROPIC_MODEL` | Primary model (set at launch) |
+| `ANTHROPIC_SMALL_FAST_MODEL` | Fast model for lightweight subagent tasks |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Model used when `/model` → Haiku |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | Model used when `/model` → Sonnet |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | Model used when `/model` → Opus |
+| `API_TIMEOUT_MS` | Request timeout (default 300000ms) |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | Disable analytics/traffic (MiniMax) |
+| `CLAUDE_CODE_EFFORT_LEVEL` | Reasoning effort level (DeepSeek: `max`) |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | Model for subagent tasks (DeepSeek: `deepseek-v4-flash`) |
+| `ENABLE_TOOL_SEARCH` | Disable tool_search preliminary call (Kimi: `FALSE`) |
 
-All supported providers expose an Anthropic-compatible Messages API, so Claude Code works with them natively without any shim or proxy (except Ollama, which needs a proxy like [litellm](https://github.com/BerriAI/litellm)).
+### System-message proxy
+
+Some providers (DeepSeek) don't support Claude Code's `mid-conversation-system-2026-04-07` beta, which injects `role:system` messages. When needed, `cc` automatically starts a local Python proxy that:
+
+- Strips `role:system` messages from requests before forwarding
+- Removes the incompatible beta header from the request
+- Injects thinking budget for reasoning models (DeepSeek V4 Pro: 16K tokens)
+- Runs on a random high port, auto-cleaned on exit
+
+This is transparent — no configuration needed. Ollama still needs a separate Anthropic-compatible proxy like [litellm](https://github.com/BerriAI/litellm).
 
 ## Configuration
 
@@ -163,10 +181,22 @@ Default locations (checked in order):
 # MINIMAX_API_KEY=...
 # Z_GLM_API_KEY=...
 # OPENROUTER_API_KEY=...
-# QWEN_API_KEY=...        # sk-sp-* Token/Coding Plan (default) — or QWEN-API-KEY= for pay-as-you-go fallback
-# DEEPSEEK_API_KEY=...
-# KIMI-API-KEY=...
+# QWEN_API_KEY=...         # sk-sp-* Token/Coding Plan (default) — or QWEN-API-KEY= for pay-as-you-go fallback
+# DEEPSEEK_API_KEY=...     # DeepSeek V4: includes auto proxy + thinking budget
+# KIMI-API-KEY=...         # Kimi K2.7 Code via api.kimi.com/coding
 ```
+
+### Provider-specific notes
+
+**DeepSeek** uses V4 models with several automatic optimizations:
+- A local proxy strips incompatible `role:system` messages (from the `mid-conversation-system` beta)
+- Extended thinking is enabled with a 16K token budget for V4 Pro
+- Subagent tasks use `deepseek-v4-flash` to save cost
+- Effort level is set to `max`
+
+**Kimi** automatically sets `ENABLE_TOOL_SEARCH=FALSE` — its API doesn't support Claude Code's preliminary tool_search call and returns 400 without this.
+
+**Qwen** prefers the `QWEN_API_KEY` (Token/Coding Plan, `sk-sp-*` prefix) with the Singapore token-plan endpoint. Falls back to `QWEN-API-KEY` (pay-as-you-go) if the coding plan key isn't set.
 
 ### Install location
 
