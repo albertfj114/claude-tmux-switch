@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# cc — Claude Code launcher with multi-provider switching + tmux sessions
+# cc — Claude Code launcher with multi-provider switching
 #
-# Launches Claude Code with different AI providers and optional tmux sessions.
-# Run without arguments to get an interactive provider + model picker.
+# Launches Claude Code with different AI providers directly in the current
+# terminal. Run without arguments to get an interactive provider + model picker.
 #
 # Usage:
 #   cc                              # Pick provider + model from menus
 #   cc --glm                        # GLM, pick model from menu
-#   cc --glm mod2                   # GLM, pick model, tmux session "mod2"
 #   cc --glm -m glm-5.2             # GLM, skip menu, use glm-5.2 directly
-#   cc --minimax work               # MiniMax, pick model, tmux session "work"
 #   cc --openrouter                 # OpenRouter, pick model from menu
-#   cc -p --glm coding              # Skip permissions, GLM, tmux "coding"
+#   cc -p --glm                     # GLM, require normal permission prompts
 #   cc -h                           # Show help
 
 # ─── Load API keys ───────────────────────────────────────────────────────────
@@ -42,29 +40,34 @@ fi
 
 PROVIDER="anthropic"
 MODEL=""
-SESSION=""
-SKIP_PERMISSIONS=""
+REQUIRE_PERMISSIONS=""
+PROVIDER_EXPLICIT=""   # did the user name a provider?
+SHOW_MENU=""           # did the user ask for the picker?
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --minimax)      PROVIDER="minimax";      shift ;;
-    --glm)          PROVIDER="glm";          shift ;;
-    --openrouter)   PROVIDER="openrouter";   shift ;;
-    --qwen)         PROVIDER="qwen";         shift ;;
-    --kimi)         PROVIDER="kimi";         shift ;;
-    --ollama)       PROVIDER="ollama";       shift ;;
-    --deepseek)     PROVIDER="deepseek";     shift ;;
-    --custom)       PROVIDER="custom";       shift ;;
+    --anthropic)    PROVIDER="anthropic";    PROVIDER_EXPLICIT=1; shift ;;
+    --minimax)      PROVIDER="minimax";      PROVIDER_EXPLICIT=1; shift ;;
+    --glm)          PROVIDER="glm";          PROVIDER_EXPLICIT=1; shift ;;
+    --openrouter)   PROVIDER="openrouter";   PROVIDER_EXPLICIT=1; shift ;;
+    --qwen)         PROVIDER="qwen";         PROVIDER_EXPLICIT=1; shift ;;
+    --kimi)         PROVIDER="kimi";         PROVIDER_EXPLICIT=1; shift ;;
+    --ollama)       PROVIDER="ollama";       PROVIDER_EXPLICIT=1; shift ;;
+    --deepseek)     PROVIDER="deepseek";     PROVIDER_EXPLICIT=1; shift ;;
+    --custom)       PROVIDER="custom";       PROVIDER_EXPLICIT=1; shift ;;
+    --menu)         SHOW_MENU=1;             shift ;;
     -m|--model)     MODEL="$2";              shift 2 ;;
-    -p|--skip-permissions) SKIP_PERMISSIONS="1"; shift ;;
+    -p|--require-permissions) REQUIRE_PERMISSIONS="1"; shift ;;
     -h|--help)
       cat <<'HELP'
-cc — Claude Code launcher with multi-provider switching + tmux sessions
+cc — Claude Code launcher with multi-provider switching
 
-Usage: cc [provider] [session-name] [-m model] [-p]
+Usage: cc [provider] [-m model] [-p]
+
+  cc              Launch Claude Opus 4.8 immediately (no menus)
+  cc --menu       Pick provider + model interactively
 
 Providers:
-  (default)     Pick from all providers interactively
   --anthropic   Anthropic (Claude models)
   --minimax     MiniMax (model picker)
   --glm         GLM via z.ai (model picker)
@@ -76,9 +79,9 @@ Providers:
   --custom      Custom endpoint (set CC_CUSTOM_* env vars)
 
 Options:
-  session-name    Opens a named tmux session (attaches if exists)
+  --menu          Show the interactive provider + model picker
   -m, --model     Skip model picker, use MODEL directly
-  -p              Enable --dangerously-skip-permissions
+  -p              Require normal permission prompts (default: skip permissions)
   -h, --help      Show this help message
 
 Environment:
@@ -92,8 +95,8 @@ HELP
       exit 0
       ;;
     *)
-      [[ -z "$SESSION" ]] && SESSION="$1"
-      shift
+      echo "Unknown argument: $1" >&2
+      exit 1
       ;;
   esac
 done
@@ -103,9 +106,9 @@ done
 # First entry is the default when user presses Enter
 
 ANTHROPIC_MODELS=(
-  "claude-opus-4-8|Claude Opus 4.8    · reasoning · planning"
-  "claude-fable-5|Claude Fable 5     · most capable · long-horizon"
-  "claude-sonnet-4-6|Claude Sonnet 4.6 · coding · agentic · fast"
+  "claude-opus-4-8|Claude Opus 4.8   · reasoning · planning"
+  "claude-fable-5|Claude Fable 5    · most capable · long-horizon"
+  "claude-sonnet-5|Claude Sonnet 5   · coding · agentic · fast"
   "claude-haiku-4-5|Claude Haiku 4.5  · fast · lightweight"
 )
 
@@ -303,10 +306,14 @@ print_tier_map() {
   echo "" >&2
 }
 
-# ─── No provider flag? Show provider picker ──────────────────────────────────
+# ─── Resolve provider / model ────────────────────────────────────────────────
+# Bare `cc` launches Claude Opus immediately — no menus. `cc --menu` brings the
+# picker back; a provider flag jumps straight to that provider's model menu.
 
-if [[ "$PROVIDER" == "anthropic" && -z "$MODEL" ]]; then
+if [[ -n "$SHOW_MENU" ]]; then
   PROVIDER="$(pick_provider)"
+elif [[ -z "$PROVIDER_EXPLICIT" && -z "$MODEL" ]]; then
+  MODEL="${ANTHROPIC_MODELS[0]%%|*}"   # claude-opus-4-8
 fi
 
 # ─── Provider config ─────────────────────────────────────────────────────────
@@ -537,84 +544,37 @@ fi
 # ─── Build the claude command ────────────────────────────────────────────────
 
 CMD="claude"
-[[ -n "$SKIP_PERMISSIONS" ]] && CMD="$CMD --dangerously-skip-permissions"
+[[ -z "$REQUIRE_PERMISSIONS" ]] && CMD="$CMD --dangerously-skip-permissions"
 if [[ "$PROVIDER" == "anthropic" && -n "$P_MODEL" ]]; then
   CMD="$CMD --model $P_MODEL"
 fi
 
 # ─── Launch ──────────────────────────────────────────────────────────────────
 
-if [[ -n "$SESSION" ]]; then
-  if [[ "$PROVIDER" != "anthropic" ]]; then
-    local_haiku="${P_HAIKU_MODEL:-$P_MODEL}"
-    local_sonnet="${P_SONNET_MODEL:-$P_MODEL}"
-    local_opus="${P_OPUS_MODEL:-$P_MODEL}"
-    ENV_PREFIX="env ANTHROPIC_API_KEY="
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_BASE_URL=$P_BASE_URL"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_AUTH_TOKEN=$P_AUTH_TOKEN"
-    ENV_PREFIX="$ENV_PREFIX API_TIMEOUT_MS=$P_TIMEOUT"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_MODEL=$P_MODEL"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_SMALL_FAST_MODEL=$local_haiku"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_HAIKU_MODEL=$local_haiku"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_SONNET_MODEL=$local_sonnet"
-    ENV_PREFIX="$ENV_PREFIX ANTHROPIC_DEFAULT_OPUS_MODEL=$local_opus"
-    [[ -n "$P_DISABLE_TRAFFIC" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
-    [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && ENV_PREFIX="$ENV_PREFIX ENABLE_TOOL_SEARCH=FALSE"
-    [[ -n "$P_EFFORT_LEVEL" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_EFFORT_LEVEL=$P_EFFORT_LEVEL"
-    [[ -n "$P_SUBAGENT_MODEL" ]] && ENV_PREFIX="$ENV_PREFIX CLAUDE_CODE_SUBAGENT_MODEL=$P_SUBAGENT_MODEL"
-    FULL_CMD="$ENV_PREFIX $CMD"
-  else
-    FULL_CMD="$CMD"
-  fi
-
-  if tmux has-session -t "$SESSION" 2>/dev/null; then
-    echo "[cc] Attaching to existing session: $SESSION"
-    exec tmux attach-session -t "$SESSION"
-  else
-    echo "[cc] Starting [$PROVIDER] session: $SESSION in $(pwd)"
-    print_tier_map
-    if [[ -n "$PROXY_SCRIPT" ]]; then
-      LAUNCH=$(mktemp /tmp/cc-launch-XXXXXX)
-      {
-        echo '#!/bin/bash'
-        echo "python3 '$PROXY_SCRIPT' '$PROXY_REAL_URL' '$P_AUTH_TOKEN' $PROXY_PORT $P_THINKING_BUDGET &"
-        echo '_P=$!'
-        echo "trap 'kill \$_P 2>/dev/null; rm -f $PROXY_SCRIPT $LAUNCH' EXIT INT TERM"
-        echo 'sleep 0.3'
-        echo "$FULL_CMD"
-      } > "$LAUNCH"
-      exec tmux new-session -s "$SESSION" -c "$PWD" "bash '$LAUNCH'"
-    else
-      exec tmux new-session -s "$SESSION" -c "$PWD" "$FULL_CMD"
-    fi
-  fi
-
+echo "[cc] Provider: $PROVIDER${P_MODEL:+ ($P_MODEL)}"
+print_tier_map
+if [[ "$PROVIDER" != "anthropic" ]]; then
+  unset ANTHROPIC_API_KEY
+  export ANTHROPIC_BASE_URL="$P_BASE_URL"
+  export ANTHROPIC_AUTH_TOKEN="$P_AUTH_TOKEN"
+  export API_TIMEOUT_MS="$P_TIMEOUT"
+  export ANTHROPIC_MODEL="$P_MODEL"
+  export ANTHROPIC_SMALL_FAST_MODEL="${P_HAIKU_MODEL:-$P_MODEL}"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="${P_HAIKU_MODEL:-$P_MODEL}"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="${P_SONNET_MODEL:-$P_MODEL}"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="${P_OPUS_MODEL:-$P_MODEL}"
+  [[ -n "$P_DISABLE_TRAFFIC" ]] && export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+  [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && export ENABLE_TOOL_SEARCH=FALSE
+  [[ -n "$P_EFFORT_LEVEL" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$P_EFFORT_LEVEL"
+  [[ -n "$P_SUBAGENT_MODEL" ]] && export CLAUDE_CODE_SUBAGENT_MODEL="$P_SUBAGENT_MODEL"
+fi
+if [[ -n "$PROXY_SCRIPT" ]]; then
+  python3 "$PROXY_SCRIPT" "$PROXY_REAL_URL" "$P_AUTH_TOKEN" "$PROXY_PORT" "$P_THINKING_BUDGET" &
+  _PROXY_PID=$!
+  sleep 0.3
+  $CMD
+  kill $_PROXY_PID 2>/dev/null
+  rm -f "$PROXY_SCRIPT"
 else
-  echo "[cc] Provider: $PROVIDER${P_MODEL:+ ($P_MODEL)}"
-  print_tier_map
-  if [[ "$PROVIDER" != "anthropic" ]]; then
-    unset ANTHROPIC_API_KEY
-    export ANTHROPIC_BASE_URL="$P_BASE_URL"
-    export ANTHROPIC_AUTH_TOKEN="$P_AUTH_TOKEN"
-    export API_TIMEOUT_MS="$P_TIMEOUT"
-    export ANTHROPIC_MODEL="$P_MODEL"
-    export ANTHROPIC_SMALL_FAST_MODEL="${P_HAIKU_MODEL:-$P_MODEL}"
-    export ANTHROPIC_DEFAULT_HAIKU_MODEL="${P_HAIKU_MODEL:-$P_MODEL}"
-    export ANTHROPIC_DEFAULT_SONNET_MODEL="${P_SONNET_MODEL:-$P_MODEL}"
-    export ANTHROPIC_DEFAULT_OPUS_MODEL="${P_OPUS_MODEL:-$P_MODEL}"
-    [[ -n "$P_DISABLE_TRAFFIC" ]] && export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-    [[ -n "$P_DISABLE_TOOL_SEARCH" ]] && export ENABLE_TOOL_SEARCH=FALSE
-    [[ -n "$P_EFFORT_LEVEL" ]] && export CLAUDE_CODE_EFFORT_LEVEL="$P_EFFORT_LEVEL"
-    [[ -n "$P_SUBAGENT_MODEL" ]] && export CLAUDE_CODE_SUBAGENT_MODEL="$P_SUBAGENT_MODEL"
-  fi
-  if [[ -n "$PROXY_SCRIPT" ]]; then
-    python3 "$PROXY_SCRIPT" "$PROXY_REAL_URL" "$P_AUTH_TOKEN" "$PROXY_PORT" "$P_THINKING_BUDGET" &
-    _PROXY_PID=$!
-    sleep 0.3
-    $CMD
-    kill $_PROXY_PID 2>/dev/null
-    rm -f "$PROXY_SCRIPT"
-  else
-    exec $CMD
-  fi
+  exec $CMD
 fi

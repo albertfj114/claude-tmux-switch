@@ -1,17 +1,16 @@
 # cc — Claude Code Multi-Provider Launcher
 
-A bash script that lets you switch between AI providers when using [Claude Code](https://claude.ai/code), with optional tmux session management. Compatible with macOS bash 3.2+.
+A bash script that lets you switch between AI providers when using [Claude Code](https://claude.ai/code), launching directly in your current terminal. Compatible with macOS bash 3.2+.
 
 ## Features
 
-- **Interactive menus** — run `cc` with no args to pick provider + model
+- **Instant launch** — bare `cc` starts Claude Opus 4.8 immediately; `cc --menu` opens the provider + model picker
 - **Multi-provider support** — Anthropic, MiniMax, GLM, OpenRouter, Qwen, DeepSeek, Kimi, Ollama, or any custom endpoint
-- **Tmux sessions** — name a session and it opens in tmux (reattaches if it exists)
 - **Model picker per provider** — choose from curated model lists, or override with `-m`
 - **In-session model switching** — `/model` inside Claude Code maps to real provider tiers (Haiku/Sonnet/Opus → fast/balanced/powerful)
 - **System-message proxy** — auto-starts a local proxy for providers that don't support `role:system` messages (DeepSeek), strips them transparently
 - **Thinking budget** — sets extended thinking for reasoning models (DeepSeek V4 Pro: 16K tokens)
-- **Zero dependencies** — just bash 3.2+, Python 3, and tmux (optional)
+- **Zero dependencies** — just bash 3.2+ and Python 3
 - **macOS compatible** — no bash 4+ features required
 
 ## Quick start
@@ -28,22 +27,22 @@ cp providers.env.example ~/.config/cc/providers.env
 # Edit ~/.config/cc/providers.env with your actual keys
 
 # 3. Run
-cc                    # Interactive provider + model picker
+cc                    # Claude Opus 4.8, instantly (no menus)
+cc --menu             # Interactive provider + model picker
 cc --glm              # GLM model picker
-cc --minimax coding   # MiniMax in tmux session "coding"
+cc --minimax          # MiniMax model picker
 ```
 
 ## Requirements
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) installed
-- `tmux` (only needed for named sessions)
 - Python 3 (for the system-message proxy, used by DeepSeek)
 - bash 3.2+ (macOS default works)
 
 ## Usage
 
 ```
-cc [provider] [session-name] [-m model] [-p]
+cc [provider] [-m model] [-p]
 ```
 
 | Flag | Description |
@@ -59,18 +58,16 @@ cc [provider] [session-name] [-m model] [-p]
 | `--ollama` | Ollama local models (auto-detected; needs Anthropic proxy) |
 | `--custom` | Custom endpoint (set `CC_CUSTOM_*` env vars) |
 | `-m MODEL` | Skip picker, use MODEL directly |
-| `-p` | Enable `--dangerously-skip-permissions` |
-| `session-name` | Open in a named tmux session |
+| `-p` | Require normal permission prompts (default: skip permissions) |
 
 ### Examples
 
 ```bash
 cc                              # Interactive picker: choose provider, then model
 cc --glm                        # GLM model picker
-cc --glm coding                 # GLM + tmux session "coding"
-cc --glm -m glm-5.1 coding     # GLM 5.1 directly, tmux "coding"
+cc --glm -m glm-5.1             # GLM 5.1 directly
 cc --openrouter -m deepseek/deepseek-v3.2
-cc --minimax debug -p           # MiniMax, skip permissions, session "debug"
+cc --minimax -p                 # MiniMax, require normal permission prompts
 cc --qwen                       # Qwen model picker
 cc --deepseek                   # DeepSeek model picker
 ```
@@ -254,7 +251,7 @@ Or set those in your `providers.env`.
 
 - API keys are loaded from a local file — never committed to git
 - The `.gitignore` blocks all `.env` files
-- The `-p` flag (`--dangerously-skip-permissions`) disables Claude Code's tool confirmation prompts. Only use this if you understand the risks.
+- `cc` passes `--dangerously-skip-permissions` by default, disabling Claude Code's tool confirmation prompts. Only rely on this if you understand the risks; pass `-p` to require normal permission prompts instead.
 
 ## License
 
