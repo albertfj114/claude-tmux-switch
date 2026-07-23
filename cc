@@ -148,7 +148,9 @@ QWEN_MODELS=(
 )
 
 KIMI_MODELS=(
-  "kimi-for-coding|Kimi K2.7 Code · coding · long-context · 256K context"
+  "k3|K3                    · reasoning · coding · 1M context"
+  "kimi-for-coding|K2.7 Coding           · coding · 256K context"
+  "kimi-for-coding-highspeed|K2.7 Coding Highspeed · fast · 256K context"
 )
 
 DEEPSEEK_MODELS=(
@@ -334,9 +336,12 @@ P_THINKING_BUDGET=""
 
 case "$PROVIDER" in
   minimax)
-    [[ -z "${MINIMAX_API_KEY:-}" ]] && { echo "Error: MINIMAX_API_KEY not set. Add it to $ENV_FILE" >&2; exit 1; }
+    # Prefer the funded token-plan key; MINIMAX_API_KEY is a legacy PAYG key
+    # that can be out of balance (402 at request time).
+    MINIMAX_KEY="${MINIMAX_TOKEN_API_KEY:-${MINIMAX_API_KEY:-}}"
+    [[ -z "$MINIMAX_KEY" ]] && { echo "Error: MINIMAX_TOKEN_API_KEY not set. Add it to $ENV_FILE" >&2; exit 1; }
     P_BASE_URL="https://api.minimax.io/anthropic"
-    P_AUTH_TOKEN="$MINIMAX_API_KEY"
+    P_AUTH_TOKEN="$MINIMAX_KEY"
     P_MODEL="$(pick_model MINIMAX_MODELS "MiniMax")"
     P_HAIKU_MODEL="MiniMax-M2.7-turbo"
     P_SONNET_MODEL="MiniMax-M2.7"
@@ -379,11 +384,17 @@ case "$PROVIDER" in
     ;;
 
   kimi)
-    KIMI_KEY="$(grep '^KIMI-API-KEY=' "$ENV_FILE" | cut -d= -f2-)"
-    [[ -z "$KIMI_KEY" ]] && { echo "Error: KIMI-API-KEY not set in $ENV_FILE" >&2; exit 1; }
+    KIMI_KEY="${KIMI_API_KEY:-}"
+    # Back-compat: older setups spelled the key with hyphens, which the env
+    # loader skips (its regex rejects '-'), so read it straight from the file.
+    [[ -z "$KIMI_KEY" && -n "$ENV_FILE" ]] && KIMI_KEY="$(grep '^KIMI-API-KEY=' "$ENV_FILE" | cut -d= -f2-)"
+    [[ -z "$KIMI_KEY" ]] && { echo "Error: KIMI_API_KEY not set in $ENV_FILE" >&2; exit 1; }
     P_BASE_URL="https://api.kimi.com/coding/"
     P_AUTH_TOKEN="$KIMI_KEY"
     P_MODEL="$(pick_model KIMI_MODELS "Kimi")"
+    P_HAIKU_MODEL="kimi-for-coding-highspeed"
+    P_SONNET_MODEL="kimi-for-coding"
+    P_OPUS_MODEL="k3"
     P_DISABLE_TOOL_SEARCH="1"
     ;;
 
