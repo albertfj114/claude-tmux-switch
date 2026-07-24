@@ -121,6 +121,7 @@ GLM_MODELS=(
 )
 
 MINIMAX_MODELS=(
+  "MiniMax-M3|M3              · reasoning · planning · latest"
   "MiniMax-M2.7|M2.7          · coding · balanced"
   "MiniMax-M2.7-turbo|M2.7 Turbo  · fast · coding"
   "MiniMax-M2.7-highspeed|M2.7 High Speed · throughput"
@@ -345,7 +346,7 @@ case "$PROVIDER" in
     P_MODEL="$(pick_model MINIMAX_MODELS "MiniMax")"
     P_HAIKU_MODEL="MiniMax-M2.7-turbo"
     P_SONNET_MODEL="MiniMax-M2.7"
-    P_OPUS_MODEL="MiniMax-M1"
+    P_OPUS_MODEL="MiniMax-M3"
     P_DISABLE_TRAFFIC="1"
     ;;
 
