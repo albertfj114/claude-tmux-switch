@@ -106,6 +106,7 @@ done
 # First entry is the default when user presses Enter
 
 ANTHROPIC_MODELS=(
+  "claude-opus-5|Claude Opus 5     · flagship · reasoning · planning"
   "claude-opus-4-8|Claude Opus 4.8   · reasoning · planning"
   "claude-fable-5|Claude Fable 5    · most capable · long-horizon"
   "claude-sonnet-5|Claude Sonnet 5   · coding · agentic · fast"
